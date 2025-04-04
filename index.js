@@ -1,19 +1,19 @@
 require("dotenv").config();
 const express = require("express");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 const dns = require("node:dns");
-const { error } = require("node:console");
 const app = express();
+const { URL } = require("url");
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
 
 let urlDatabase = {}; // This will hold the short URL mappings
-let shortUrlCounter = 1; // Counter to generate short URLs
+let counter = 1; // Counter to generate short URLs
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // For x-www-form-urlencoded
 
 app.use("/public", express.static(`${process.cwd()}/public`));
 
@@ -26,44 +26,42 @@ app.get("/api/hello", function (req, res) {
   res.json({ greeting: "hello API" });
 });
 
-// POST route to create a short URL
+// POST a URL to shorten
 app.post("/api/shorturl", (req, res) => {
   const originalUrl = req.body.url;
 
-  // Validate the URL format using regex
-  const urlPattern =
-    /^(https?:\/\/)([a-z0-9-]+\.)+[a-z0-9]{2,}(\/[a-zA-Z0-9#]+\/?)*$/;
-  if (!urlPattern.test(originalUrl)) {
+  let urlObject;
+  try {
+    urlObject = new URL(originalUrl);
+  } catch (error) {
     return res.json({ error: "invalid url" });
   }
 
-  // Use dns.lookup to verify the domain of the URL
-  const urlObject = new URL(originalUrl);
   dns.lookup(urlObject.hostname, (err) => {
     if (err) {
       return res.json({ error: "invalid url" });
     }
 
-    // Create short URL and store it in the database
-    const shortUrl = shortUrlCounter++;
-    urlDatabase[shortUrl] = originalUrl;
+    const short_url = counter++;
+    urlDatabase[short_url] = originalUrl;
 
     res.json({
       original_url: originalUrl,
-      short_url: shortUrl,
+      short_url: short_url,
     });
   });
 });
 
-// GET route to redirect to the original URL
-app.get("/api/shorturl/:shortUrl", (req, res) => {
-  const shortUrl = req.params.shortUrl;
+// GET redirect from short URL
+app.get("/api/shorturl/:short_url", (req, res) => {
+  const shortUrl = parseInt(req.params.short_url);
 
-  if (urlDatabase[shortUrl]) {
-    return res.redirect(urlDatabase[shortUrl]);
+  const originalUrl = urlDatabase[shortUrl];
+  if (!originalUrl) {
+    return res.json({ error: "No short URL found for given input" });
   }
 
-  return res.json({ error: "Short URL not found" });
+  res.redirect(originalUrl);
 });
 
 app.listen(port, function () {
